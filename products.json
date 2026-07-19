@@ -1,0 +1,29 @@
+[
+  {
+    "id": 1,
+    "name": "HyperX SoloCast",
+    "stock": 15,
+    "price": 1790,
+    "category": "Microphone",
+    "status": "Active",
+    "image_url": "https://media.discordapp.net/attachments/965549084079452180/1528379323256541214/hyperx_solocast_01_main.png"
+  },
+  {
+    "id": 2,
+    "name": "Fantech Leviosa MCX01",
+    "stock": 24,
+    "price": 1590,
+    "category": "Microphone",
+    "status": "Active",
+    "image_url": "https://www.jib.co.th/img_master/product/original/2023112513582143057_1.jpg"
+  },
+  {
+    "id": 3,
+    "name": "Shure SM7B",
+    "stock": 5,
+    "price": 22864,
+    "category": "Microphone",
+    "status": "Low Stock",
+    "image_url": "https://mercular.s3.ap-southeast-1.amazonaws.com/images/products/2020/04/sm7b-1.jpg"
+  }
+]
