@@ -1,19 +1,23 @@
 // src/app/product.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
-import { useState } from "react";
-import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function ProductsScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const menuItems = ["Home", "Products", "Categories", "Stores", "Finances", "Settings"];
+  const PRODUCTS_URL = "https://raw.githubusercontent.com/Tisana8520/Inventory/refs/heads/main/products.json";
 
   // ใช้ state เพื่อให้สามารถแก้ไขข้อมูลได้จริงๆ
-  const [products, setProducts] = useState([
-    { id: 1, name: "HyperX SoloCast", stock: 15, price: "฿1,790" },
-    { id: 2, name: "Fantech Leviosa Microphone MCX01", stock: 24, price: "฿1,590" },
-    { id: 3, name: "Shure SM7B Cardioid Dynamic Microphone", stock: 5, price: "฿22,864" },
-  ]);
+  const [products, setProducts] = useState<any[]>([]);
+  
+  useEffect(() => {
+    fetch(PRODUCTS_URL)
+      .then((response) => response.json())
+      .then((data) => setProducts(data))
+      .catch((error) => console.log(error));
+ }, []);
 
   const handleEdit = (id: number) => {
     Alert.alert("แก้ไขสินค้า", `คุณกำลังแก้ไขสินค้า ID: ${id}`);
@@ -69,10 +73,12 @@ export default function ProductsScreen() {
             activeOpacity={0.8}
           >
             <View style={styles.cardLeft}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="mic-outline" size={22} color="#6C2BD9" />
-              </View>
-              <View style={styles.productDetails}>
+              <Image
+                source={{ uri: product.image_url }}
+                style={styles.productImage}
+              />
+
+            <View style={styles.productDetails}>
                 {/* เอา numberOfLines ออกเพื่อให้ข้อความยาวขึ้นบรรทัดใหม่ได้ */}
                 <Text style={styles.productName}>{product.name}</Text>
                 <Text style={styles.productStock}>Stock : {product.stock} pcs</Text>
@@ -125,6 +131,7 @@ const styles = StyleSheet.create({
   productCard: { backgroundColor: "#fff", borderRadius: 16, padding: 14, marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: "#F3F4F6" },
   cardLeft: { flexDirection: "row", alignItems: "center", flex: 1, marginRight: 10 },
   iconContainer: { width: 40, height: 40, borderRadius: 10, backgroundColor: "#EDE9FE", justifyContent: "center", alignItems: "center" },
+  productImage: { width: 50, height: 50, borderRadius: 10, marginRight: 12, resizeMode: "cover",},
   productDetails: { marginLeft: 14, justifyContent: "center", flex: 1 },
   productName: { fontSize: 14, fontWeight: "600", color: "#1F2937", marginBottom: 2 },
   productStock: { fontSize: 12, color: "#9CA3AF" },
