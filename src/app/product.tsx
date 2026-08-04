@@ -7,7 +7,7 @@ import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, Vi
 export default function ProductsScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const menuItems = ["Home", "Products", "Categories", "Stores", "Finances", "Settings"];
-  const PRODUCTS_URL = "https://raw.githubusercontent.com/Tisana8520/Inventory/refs/heads/main/products.json";
+  const PRODUCTS_URL = "http://119.59.102.161:3061/products";
 
   // ใช้ state เพื่อให้สามารถแก้ไขข้อมูลได้จริงๆ
   const [products, setProducts] = useState<any[]>([]);
