@@ -1,7 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -11,6 +15,50 @@ import {
 
 export default function Index() {
   const router = useRouter();
+
+  // 1. เพิ่ม State เก็บค่า Username, Password และสถานะการโหลด
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // ฟังก์ชันแจ้งเตือนรองรับ Web และ Mobile
+  const showAlert = (title: string, message: string) => {
+    if (Platform.OS === "web") {
+      alert(`${title}\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
+  // 2. ฟังก์ชันจัดการการ Log In
+  const handleLogin = async () => {
+    if (!username.trim() || !password.trim()) {
+      showAlert("แจ้งเตือน", "กรุณากรอก Username และ Password ให้ครบถ้วน");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // ตัวอย่าง: การเช็กแบบ Local Basic (ถ้าต้องการใช้ยิง API backend ให้ปลดล็อกคอมเมนต์ด้านล่าง)
+      /*
+      const res = await fetch("http://119.59.102.161:3061/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "เข้าสู่ระบบไม่สำเร็จ");
+      */
+
+      // สมมุติผ่านเงื่อนไข ให้เปลี่ยนหน้าไป /home
+      router.replace("/home"); // ใช้ replace เพื่อไม่ให้ผู้ใช้กด Back กลับมาหน้า Login ได้ง่ายๆ
+    } catch (error: any) {
+      showAlert("เกิดข้อผิดพลาด", error.message || "ไม่สามารถเข้าสู่ระบบได้");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <LinearGradient
@@ -22,44 +70,53 @@ export default function Index() {
 
         <Text style={styles.title}>Inventor.io</Text>
 
-        <Text style={styles.subtitle}>
-          Welcome Back
-        </Text>
+        <Text style={styles.subtitle}>Welcome Back</Text>
 
+        {/* Input Username */}
         <View style={styles.inputBox}>
           <Ionicons
             name="person-outline"
             size={22}
             color="#7B2FF7"
           />
-
           <TextInput
             placeholder="Username"
             placeholderTextColor="#888"
             style={styles.input}
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
           />
         </View>
 
+        {/* Input Password */}
         <View style={styles.inputBox}>
           <Ionicons
             name="lock-closed-outline"
             size={22}
             color="#7B2FF7"
           />
-
           <TextInput
             placeholder="Password"
             placeholderTextColor="#888"
             secureTextEntry
             style={styles.input}
+            value={password}
+            onChangeText={setPassword}
           />
         </View>
 
+        {/* Login Button */}
         <TouchableOpacity
           style={styles.button}
-          onPress={() => router.push("/home")}
+          onPress={handleLogin}
+          disabled={loading}
         >
-          <Text style={styles.buttonText}>Log In</Text>
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Log In</Text>
+          )}
         </TouchableOpacity>
 
         <Text style={styles.footer}>

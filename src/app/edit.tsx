@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link, useRouter } from "expo-router";
-import { useState } from "react";
+import { Link, useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,36 +14,44 @@ import {
   View,
 } from "react-native";
 
-const API_BASE_URL = "http://119.59.102.161:3061";
-
-// รายการยี่ห้อไมโครโฟนสำหรับเลือกใน Dropdown
-const MIC_BRANDS = [
-  "HyperX Mics",
-  "Shure Mics",
-  "RODE Mics",
-  "Fifine Mics",
-  "Razer Mics",
-  "Elgato Mics",
-];
-
-export default function AddProductScreen() {
+export default function EditProductScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams(); // รับค่า params ที่ส่งมาจากหน้า Product List
+
   const [menuVisible, setMenuVisible] = useState(false);
-  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const productId = (params.id as string) || (params.itemCode as string) || "";
+
+  // ดึงข้อมูลเดิมจาก params มาตั้งเป็นค่าเริ่มต้นใน Form
   const [form, setForm] = useState({
-    itemCode: "",
-    name: "",
-    stockSize: "",
-    category: "HyperX Mics",
-    store: "",
-    status: "Active",
-    imageUrl: "",
+    itemCode: productId,
+    name: (params.name as string) || "",
+    stockSize: (params.stock as string) || "0",
+    category: (params.category as string) || "",
+    store: (params.location as string) || "",
+    status: (params.status as string) || "Active",
+    imageUrl: (params.image as string) || "",
   });
+
+  // อัปเดต Form เมื่อ params มีการเปลี่ยนแปลง
+  useEffect(() => {
+    if (productId) {
+      setForm({
+        itemCode: productId,
+        name: (params.name as string) || "",
+        stockSize: (params.stock as string) || "0",
+        category: (params.category as string) || "",
+        store: (params.location as string) || "",
+        status: (params.status as string) || "Active",
+        imageUrl: (params.image as string) || "",
+      });
+    }
+  }, [params]);
 
   const menuItems = ["Home", "Products", "Categories", "Stores", "Finances", "Settings"];
 
+  // ฟังก์ชันแสดง Alert รองรับทั้ง Web และ Native
   const showAlert = (title: string, message: string, onOk?: () => void) => {
     if (Platform.OS === "web") {
       alert(`${title}\n${message}`);
@@ -53,40 +61,54 @@ export default function AddProductScreen() {
     }
   };
 
-  const handleSave = async () => {
-    if (!form.itemCode.trim() || !form.name.trim()) {
-      showAlert("ข้อผิดพลาด", "กรุณากรอก Item code และชื่อรุ่นไมโครโฟนให้ครบถ้วน");
+  // ==================== HANDLE UPDATE API (PUT) ====================
+  const handleUpdate = async () => {
+    if (!form.itemCode) {
+      showAlert("ข้อผิดพลาด", "ไม่พบ รหัสสินค้า (Item Code)");
+      return;
+    }
+
+    if (!form.name.trim()) {
+      showAlert("ข้อผิดพลาด", "กรุณากรอกชื่อสินค้า (Name)");
       return;
     }
 
     setLoading(true);
 
     const payload = {
-      M_ID: form.itemCode.trim(),
-      id: form.itemCode.trim(),
-      P_ID: form.itemCode.trim(),
       name: form.name.trim(),
-      M_Name: form.name.trim(),
       stock: Number(form.stockSize) || 0,
-      category: form.category.trim() || "HyperX Mics",
+      category: form.category.trim() || null,
       location_text: form.store.trim() || null,
       badge_status: form.status || "Active",
       image_url: form.imageUrl.trim() || null,
     };
 
     try {
-      let response = await fetch(`${API_BASE_URL}/api/products`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.status === 404) {
-        response = await fetch(`${API_BASE_URL}/products`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+      // 1. ลองยิง Endpoint หลัก /api/products/:id
+      let response = await fetch(
+        `http://119.59.102.161:3061/api/products/${form.itemCode}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
-        });
+        }
+      );
+
+      // 2. ถ้าไม่พบ Route (404) ลองยิง Route สำรอง /products/:id
+      if (response.status === 404) {
+        response = await fetch(
+          `http://119.59.102.161:3061/products/${form.itemCode}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+          }
+        );
       }
 
       const contentType = response.headers.get("content-type");
@@ -94,23 +116,24 @@ export default function AddProductScreen() {
 
       if (contentType && contentType.includes("application/json")) {
         data = await response.json();
+      } else {
+        const textError = await response.text();
+        if (!response.ok) {
+          throw new Error(`Server Error (${response.status}): ${textError}`);
+        }
       }
 
-      if (response.ok || data.success || data.insertId) {
-        showAlert("สำเร็จ!", "เพิ่มสินค้าไมโครโฟนใหม่เรียบร้อยแล้ว", () => {
+      if (response.ok || data.success) {
+        showAlert("สำเร็จ!", "แก้ไขข้อมูลสินค้าเรียบร้อยแล้ว", () => {
           router.push("/product");
         });
       } else {
-        // กรณี API ตอบกลับ error อื่น ให้เปลี่ยนเป็นแจ้งสำเร็จ local และเปลี่ยนหน้า
-        showAlert("บันทึกสำเร็จ", "เพิ่มสินค้าเรียบร้อยแล้ว", () => {
-          router.push("/product");
-        });
+        showAlert("เกิดข้อผิดพลาด", data.error || data.message || "ไม่สามารถแก้ไขสินค้าได้");
       }
     } catch (error: any) {
-      console.log("Backend request error, fallback to local flow:", error);
-      showAlert("บันทึกสำเร็จ", "เพิ่มสินค้าเรียบร้อยแล้ว", () => {
-        router.push("/product");
-      });
+      console.error("Fetch Error:", error);
+      // แสดงข้อความ Error ตามจริง ไม่หลอกผู้ใช้ว่าบันทึกสำเร็จ
+      showAlert("เกิดข้อผิดพลาด", "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์เพื่อบันทึกข้อมูลได้");
     } finally {
       setLoading(false);
     }
@@ -124,7 +147,7 @@ export default function AddProductScreen() {
           <Ionicons name="menu" size={28} color="#6C2BD9" />
         </TouchableOpacity>
 
-        <Text style={styles.logo}>Add Microphone</Text>
+        <Text style={styles.logo}>Edit product</Text>
         <Link href="/settings" asChild>
           <TouchableOpacity style={styles.profile}>
             <Ionicons name="person" size={18} color="#fff" />
@@ -135,46 +158,41 @@ export default function AddProductScreen() {
       {/* FORM CONTENT */}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Item Code*</Text>
+          <Text style={styles.label}>Item code (Cannot edit)</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, styles.disabledInput]}
             value={form.itemCode}
-            onChangeText={(text) => setForm({ ...form, itemCode: text })}
-            placeholder="e.g. MIC-001"
-            placeholderTextColor="#9CA3AF"
+            editable={false} // ห้ามแก้ไข ID
           />
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Microphone Model Name*</Text>
+          <Text style={styles.label}>Name*</Text>
           <TextInput
             style={styles.input}
             value={form.name}
             onChangeText={(text) => setForm({ ...form, name: text })}
-            placeholder="e.g. QuadCast S / SM7B / NT-USB"
+            placeholder="Enter product name"
             placeholderTextColor="#9CA3AF"
           />
         </View>
 
-        {/* SELECT BRAND / CATEGORY */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Brand / Category*</Text>
-          <TouchableOpacity
-            style={[styles.input, styles.selectInput]}
-            onPress={() => setCategoryModalVisible(true)}
-          >
-            <Text style={{ color: form.category ? "#1F2937" : "#9CA3AF", fontSize: 15 }}>
-              {form.category || "Select Mic Brand"}
-            </Text>
-            <Ionicons name="chevron-down" size={20} color="#6C2BD9" />
-          </TouchableOpacity>
+          <Text style={styles.label}>Category</Text>
+          <TextInput
+            style={styles.input}
+            value={form.category}
+            onChangeText={(text) => setForm({ ...form, category: text })}
+            placeholder="Enter category"
+            placeholderTextColor="#9CA3AF"
+          />
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Stock Quantity</Text>
+          <Text style={styles.label}>Stock size</Text>
           <TextInput
             style={styles.input}
-            value={form.stockSize}
+            value={String(form.stockSize)}
             onChangeText={(text) => setForm({ ...form, stockSize: text })}
             keyboardType="numeric"
             placeholder="0"
@@ -183,12 +201,12 @@ export default function AddProductScreen() {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Warehouse / Location</Text>
+          <Text style={styles.label}>Location / Store</Text>
           <TextInput
             style={styles.input}
             value={form.store}
             onChangeText={(text) => setForm({ ...form, store: text })}
-            placeholder="e.g. Shelf A-1 / Main Store"
+            placeholder="Enter location"
             placeholderTextColor="#9CA3AF"
           />
         </View>
@@ -204,46 +222,19 @@ export default function AddProductScreen() {
           />
         </View>
 
+        {/* Update Button */}
         <TouchableOpacity
           style={[styles.saveButton, loading && { opacity: 0.7 }]}
-          onPress={handleSave}
+          onPress={handleUpdate}
           disabled={loading}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.saveButtonText}>Save Microphone</Text>
+            <Text style={styles.saveButtonText}>Update product</Text>
           )}
         </TouchableOpacity>
       </ScrollView>
-
-      {/* CATEGORY SELECTOR MODAL */}
-      <Modal visible={categoryModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Select Mic Brand</Text>
-            {MIC_BRANDS.map((brand, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={styles.brandOption}
-                onPress={() => {
-                  setForm({ ...form, category: brand });
-                  setCategoryModalVisible(false);
-                }}
-              >
-                <Ionicons name="mic-outline" size={20} color="#6C2BD9" />
-                <Text style={styles.brandText}>{brand}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.closeModalBtn}
-              onPress={() => setCategoryModalVisible(false)}
-            >
-              <Text style={{ color: "#4B5563", fontWeight: "600" }}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       {/* BOTTOM NAV */}
       <View style={styles.bottom}>
@@ -256,15 +247,15 @@ export default function AddProductScreen() {
 
         <Link href="/add" asChild>
           <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="add-circle" size={22} color="#6C2BD9" />
-            <Text style={styles.menuText}>Add</Text>
+            <Ionicons name="add-circle-outline" size={22} color="#C4B5FD" />
+            <Text style={styles.menuGray}>Add</Text>
           </TouchableOpacity>
         </Link>
 
         <Link href="/product" asChild>
           <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="cube-outline" size={22} color="#C4B5FD" />
-            <Text style={styles.menuGray}>Products</Text>
+            <Ionicons name="cube" size={22} color="#6C2BD9" />
+            <Text style={styles.menuText}>Product</Text>
           </TouchableOpacity>
         </Link>
 
@@ -276,13 +267,8 @@ export default function AddProductScreen() {
         </Link>
       </View>
 
-      {/* MENU MODAL LAYER */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={menuVisible}
-        onRequestClose={() => setMenuVisible(false)}
-      >
+      {/* MENU MODAL */}
+      <Modal animationType="fade" transparent={true} visible={menuVisible} onRequestClose={() => setMenuVisible(false)}>
         <View style={styles.menuOverlay}>
           <View style={styles.overlayHeader}>
             <TouchableOpacity onPress={() => setMenuVisible(false)} style={styles.closeButton}>
@@ -291,7 +277,6 @@ export default function AddProductScreen() {
             <Text style={styles.overlayLogo}>Inventor.io</Text>
             <View style={{ width: 28 }} />
           </View>
-
           <View style={styles.overlayLinksContainer}>
             {menuItems.map((menu, idx) => (
               <TouchableOpacity key={idx} onPress={() => setMenuVisible(false)}>
@@ -299,7 +284,6 @@ export default function AddProductScreen() {
               </TouchableOpacity>
             ))}
           </View>
-
           <TouchableOpacity style={styles.logoutButton} onPress={() => setMenuVisible(false)}>
             <Text style={styles.logoutText}>Log out</Text>
           </TouchableOpacity>
@@ -318,23 +302,13 @@ const styles = StyleSheet.create({
   inputGroup: { marginBottom: 16 },
   label: { fontSize: 14, fontWeight: "600", color: "#1F2937", marginBottom: 8 },
   input: { backgroundColor: "#F3F4F6", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, color: "#1F2937" },
-  selectInput: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  
+  disabledInput: { backgroundColor: "#E5E7EB", color: "#6B7280" },
   saveButton: { backgroundColor: "#4C1D95", borderRadius: 12, paddingVertical: 16, alignItems: "center", marginTop: 10, shadowColor: "#4C1D95", shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
   saveButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center", paddingHorizontal: 20 },
-  modalCard: { width: "100%", maxWidth: 380, backgroundColor: "#fff", borderRadius: 16, padding: 20 },
-  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 14, color: "#1F2937" },
-  brandOption: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderColor: "#F3F4F6", gap: 12 },
-  brandText: { fontSize: 16, color: "#1F2937", fontWeight: "500" },
-  closeModalBtn: { marginTop: 16, alignItems: "center", paddingVertical: 8 },
-
   bottom: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "#fff", flexDirection: "row", justifyContent: "space-around", paddingVertical: 12, borderTopWidth: 1, borderColor: "#F3F4F6", height: 70 },
   menuItem: { alignItems: "center" },
   menuText: { color: "#6C2BD9", fontWeight: "bold", fontSize: 11, marginTop: 4 },
   menuGray: { color: "#C4B5FD", fontSize: 11, marginTop: 4 },
-  
   menuOverlay: { flex: 1, backgroundColor: "#4C1D95", paddingTop: 50, paddingHorizontal: 24, justifyContent: "space-between", paddingBottom: 40 },
   overlayHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", height: 50 },
   closeButton: { padding: 4 },
