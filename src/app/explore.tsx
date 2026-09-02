@@ -19,23 +19,24 @@ export default function TabTwoScreen() {
   };
   const theme = useTheme();
 
+  // แก้ไข: รวม iOS และ Android ให้ใช้ Insets เดียวกัน
   const contentPlatformStyle = Platform.select({
-    android: {
+    web: {
+      paddingTop: Spacing.six,
+      paddingBottom: Spacing.four,
+    },
+    default: {
       paddingTop: insets.top,
       paddingLeft: insets.left,
       paddingRight: insets.right,
       paddingBottom: insets.bottom,
-    },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
     },
   });
 
   return (
     <ScrollView
       style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
+      showsVerticalScrollIndicator={false}
       contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
       <ThemedView style={styles.container}>
         <ThemedView style={styles.titleContainer}>

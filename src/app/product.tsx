@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface Product {
   id: string | number;
@@ -24,7 +25,14 @@ interface Product {
   image_url?: string;
 }
 
-// ดึงค่าจาก .env ก่อน ถ้าไม่มีค่อยใช้ IP หลังบ้านปัจจุบัน
+const MENU_ITEMS = [
+  { name: "Home", path: "/home" },
+  { name: "Products", path: "/product" },
+  { name: "Categories", path: "/categories" },
+  { name: "Add Microphone", path: "/add" },
+  { name: "Settings", path: "/settings" },
+];
+
 const API_BASE_URL = process.env.EXPO_PUBLIC_BASE_URL || "http://119.59.102.161:3061";
 
 export default function ProductScreen() {
@@ -33,7 +41,11 @@ export default function ProductScreen() {
   const [loading, setLoading] = useState(true);
   const [menuVisible, setMenuVisible] = useState(false);
 
-  // State สำหรับ Modal แก้ไขสินค้า (เปลี่ยน stock และ price เป็น string ชั่วคราวตอนพิมพ์)
+  // State สำหรับระบบค้นหา (Search)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearchInput, setShowSearchInput] = useState(false);
+
+  // State สำหรับ Modal แก้ไขสินค้า
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState<{
     id: string | number;
@@ -44,8 +56,6 @@ export default function ProductScreen() {
     image_url?: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
-
-  const menuItems = ["Home", "Products", "Categories", "Stores", "Finances", "Settings"];
 
   const showAlert = (title: string, message: string, onOk?: () => void) => {
     if (Platform.OS === "web") {
@@ -61,7 +71,7 @@ export default function ProductScreen() {
     try {
       setLoading(true);
       let res;
-      
+
       try {
         res = await fetch(`${API_BASE_URL}/api/products`);
       } catch (e) {
@@ -71,10 +81,9 @@ export default function ProductScreen() {
       if (res && res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          const formatted = data.map((item: any, idx: number) => {
+          const formatted: Product[] = data.map((item: any, idx: number) => {
             let imgUrl = item.image_url || item.image || null;
 
-            // ตรวจสอบความถูกต้องของ URL รูปภาพ
             if (imgUrl && imgUrl.startsWith("/")) {
               imgUrl = `${API_BASE_URL}${imgUrl}`;
             } else if (!imgUrl || !imgUrl.startsWith("http")) {
@@ -154,33 +163,35 @@ export default function ProductScreen() {
       return;
     }
 
-    // แปลงข้อมูล stock และ price ให้เป็นตัวเลขที่ถูกต้องก่อนส่ง API
-    const payload = {
-      ...editingProduct,
+    const updatedProduct: Product = {
+      id: editingProduct.id,
+      name: editingProduct.name.trim(),
       stock: editingProduct.stock === "" ? 0 : Number(editingProduct.stock),
       price: editingProduct.price === "" ? 0 : Number(editingProduct.price),
+      category: editingProduct.category,
+      image_url: editingProduct.image_url,
     };
 
     setSaving(true);
     try {
-      let res = await fetch(`${API_BASE_URL}/api/products/${payload.id}`, {
+      let res = await fetch(`${API_BASE_URL}/api/products/${updatedProduct.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(updatedProduct),
       });
 
       if (!res.ok) {
-        await fetch(`${API_BASE_URL}/products/${payload.id}`, {
+        await fetch(`${API_BASE_URL}/products/${updatedProduct.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(updatedProduct),
         });
       }
     } catch (error) {
       console.log("Edit backend error");
     } finally {
       setProducts((prev) =>
-        prev.map((item) => (item.id === payload.id ? payload : item))
+        prev.map((item) => (item.id === updatedProduct.id ? updatedProduct : item))
       );
       showAlert("สำเร็จ", "อัปเดตข้อมูลสินค้าเรียบร้อยแล้ว");
       setEditModalVisible(false);
@@ -188,8 +199,23 @@ export default function ProductScreen() {
     }
   };
 
+  const handleLogout = () => {
+    setMenuVisible(false);
+    router.replace("/");
+  };
+
+  // กรองสินค้าตาม: ชื่อ, หมวดหมู่ และ ราคา (Price)
+  const filteredProducts = products.filter((item) => {
+    const query = searchQuery.toLowerCase().trim();
+    const matchName = item.name.toLowerCase().includes(query);
+    const matchCategory = item.category ? item.category.toLowerCase().includes(query) : false;
+    const matchPrice = item.price ? String(item.price).includes(query) : false;
+
+    return matchName || matchCategory || matchPrice;
+  });
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => setMenuVisible(true)}>
@@ -207,33 +233,66 @@ export default function ProductScreen() {
 
       {/* TOP ACTION BAR */}
       <View style={styles.actionBar}>
-        <TouchableOpacity style={styles.iconBtn}>
-          <Ionicons name="search" size={20} color="#6B7280" />
-        </TouchableOpacity>
+        {showSearchInput ? (
+          <View style={styles.searchBarExpanded}>
+            <Ionicons name="search" size={18} color="#6B7280" style={{ marginRight: 6 }} />
+            <TextInput
+              style={styles.searchInputExpanded}
+              placeholder="ค้นหาชื่อ รุ่น หรือราคา..."
+              placeholderTextColor="#9CA3AF"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+            />
+            <TouchableOpacity
+              onPress={() => {
+                setShowSearchInput(false);
+                setSearchQuery("");
+              }}
+            >
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => setShowSearchInput(true)}
+            >
+              <Ionicons name="search" size={20} color="#6B7280" />
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => router.push("/add")}
-        >
-          <Ionicons name="add" size={18} color="#fff" />
-          <Text style={styles.addBtnText}>Add Product</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => router.push("/add")}
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.addBtnText}>Add Product</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity style={styles.filterBtn}>
-          <Text style={styles.filterText}>Filter</Text>
-          <Ionicons name="filter" size={16} color="#6B7280" />
-        </TouchableOpacity>
+            <View style={{ width: 40 }} />
+          </>
+        )}
       </View>
 
       {/* TITLE & COUNT */}
-      <Text style={styles.sectionTitle}>Product Inventory ({products.length})</Text>
+      <Text style={styles.sectionTitle}>
+        Product Inventory ({filteredProducts.length})
+      </Text>
 
       {/* PRODUCT LIST */}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         {loading ? (
           <ActivityIndicator color="#6C2BD9" size="large" style={{ marginTop: 40 }} />
+        ) : filteredProducts.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Ionicons name="search-outline" size={48} color="#9CA3AF" />
+            <Text style={styles.emptyText}>
+              {searchQuery ? `ไม่พบสินค้าที่ตรงกับ "${searchQuery}"` : "ไม่มีรายการสินค้า"}
+            </Text>
+          </View>
         ) : (
-          products.map((item) => (
+          filteredProducts.map((item) => (
             <View key={item.id} style={styles.card}>
               <View style={styles.cardLeft}>
                 <View style={styles.imgBox}>
@@ -367,7 +426,7 @@ export default function ProductScreen() {
         visible={menuVisible}
         onRequestClose={() => setMenuVisible(false)}
       >
-        <View style={styles.menuOverlay}>
+        <SafeAreaView style={styles.menuOverlay}>
           <View style={styles.overlayHeader}>
             <TouchableOpacity onPress={() => setMenuVisible(false)}>
               <Ionicons name="close" size={28} color="#fff" />
@@ -377,17 +436,23 @@ export default function ProductScreen() {
           </View>
 
           <View style={styles.overlayLinksContainer}>
-            {menuItems.map((menu, idx) => (
-              <TouchableOpacity key={idx} onPress={() => setMenuVisible(false)}>
-                <Text style={styles.overlayMenuText}>{menu}</Text>
+            {MENU_ITEMS.map((menu, idx) => (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push(menu.path as any);
+                }}
+              >
+                <Text style={styles.overlayMenuText}>{menu.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <TouchableOpacity style={styles.logoutButton} onPress={() => setMenuVisible(false)}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutText}>Log out</Text>
           </TouchableOpacity>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* BOTTOM NAV */}
@@ -420,24 +485,63 @@ export default function ProductScreen() {
           </TouchableOpacity>
         </Link>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB", paddingTop: 50 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, marginBottom: 16 },
+  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, marginBottom: 12 },
   logo: { fontSize: 20, fontWeight: "bold", color: "#1F2937" },
   profile: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#6C2BD9", justifyContent: "center", alignItems: "center" },
-  
-  actionBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, marginBottom: 20 },
-  iconBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: "#F3F4F6", justifyContent: "center", alignItems: "center" },
-  addBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#311076", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, gap: 6 },
+
+  actionBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    marginBottom: 16,
+    height: 42,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#311076",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6,
+  },
   addBtnText: { color: "#fff", fontWeight: "600", fontSize: 13 },
-  filterBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, gap: 6 },
-  filterText: { fontSize: 13, color: "#4B5563" },
+
+  searchBarExpanded: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 40,
+  },
+  searchInputExpanded: {
+    flex: 1,
+    fontSize: 14,
+    color: "#1F2937",
+    paddingVertical: 0,
+  },
 
   sectionTitle: { fontSize: 15, fontWeight: "bold", color: "#1F2937", paddingHorizontal: 24, marginBottom: 12 },
+
+  emptyBox: { alignItems: "center", justifyContent: "center", marginTop: 40, gap: 8 },
+  emptyText: { color: "#9CA3AF", fontSize: 14, fontWeight: "500" },
 
   card: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#F3F4F6", marginHorizontal: 24, padding: 14, borderRadius: 16, marginBottom: 12 },
   cardLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
@@ -460,7 +564,7 @@ const styles = StyleSheet.create({
   modalBtnRow: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 10 },
   modalBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
 
-  menuOverlay: { flex: 1, backgroundColor: "#4C1D95", paddingTop: 50, paddingHorizontal: 24, justifyContent: "space-between", paddingBottom: 40 },
+  menuOverlay: { flex: 1, backgroundColor: "#4C1D95", paddingHorizontal: 24, justifyContent: "space-between", paddingBottom: 20 },
   overlayHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", height: 50 },
   overlayLogo: { fontSize: 20, fontWeight: "bold", color: "#fff" },
   overlayLinksContainer: { alignItems: "center", justifyContent: "center", gap: 25 },

@@ -13,17 +13,27 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+const MENU_ITEMS = [
+  { name: "Home", path: "/home" },
+  { name: "Products", path: "/product" },
+  { name: "Categories", path: "/categories" },
+  { name: "Add Microphone", path: "/add" },
+  { name: "Settings", path: "/settings" },
+];
+
+const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL || "http://119.59.102.161:3061";
 
 export default function EditProductScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams(); // รับค่า params ที่ส่งมาจากหน้า Product List
+  const params = useLocalSearchParams();
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const productId = (params.id as string) || (params.itemCode as string) || "";
 
-  // ดึงข้อมูลเดิมจาก params มาตั้งเป็นค่าเริ่มต้นใน Form
   const [form, setForm] = useState({
     itemCode: productId,
     name: (params.name as string) || "",
@@ -34,7 +44,6 @@ export default function EditProductScreen() {
     imageUrl: (params.image as string) || "",
   });
 
-  // อัปเดต Form เมื่อ params มีการเปลี่ยนแปลง
   useEffect(() => {
     if (productId) {
       setForm({
@@ -49,9 +58,6 @@ export default function EditProductScreen() {
     }
   }, [params]);
 
-  const menuItems = ["Home", "Products", "Categories", "Stores", "Finances", "Settings"];
-
-  // ฟังก์ชันแสดง Alert รองรับทั้ง Web และ Native
   const showAlert = (title: string, message: string, onOk?: () => void) => {
     if (Platform.OS === "web") {
       alert(`${title}\n${message}`);
@@ -85,30 +91,18 @@ export default function EditProductScreen() {
     };
 
     try {
-      // 1. ลองยิง Endpoint หลัก /api/products/:id
-      let response = await fetch(
-        `http://119.59.102.161:3061/api/products/${form.itemCode}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        }
-      );
+      let response = await fetch(`${BASE_URL}/api/products/${form.itemCode}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-      // 2. ถ้าไม่พบ Route (404) ลองยิง Route สำรอง /products/:id
       if (response.status === 404) {
-        response = await fetch(
-          `http://119.59.102.161:3061/products/${form.itemCode}`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-          }
-        );
+        response = await fetch(`${BASE_URL}/products/${form.itemCode}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
       }
 
       const contentType = response.headers.get("content-type");
@@ -132,15 +126,19 @@ export default function EditProductScreen() {
       }
     } catch (error: any) {
       console.error("Fetch Error:", error);
-      // แสดงข้อความ Error ตามจริง ไม่หลอกผู้ใช้ว่าบันทึกสำเร็จ
       showAlert("เกิดข้อผิดพลาด", "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์เพื่อบันทึกข้อมูลได้");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleLogout = () => {
+    setMenuVisible(false);
+    router.replace("/");
+  };
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => setMenuVisible(true)}>
@@ -148,6 +146,7 @@ export default function EditProductScreen() {
         </TouchableOpacity>
 
         <Text style={styles.logo}>Edit product</Text>
+
         <Link href="/settings" asChild>
           <TouchableOpacity style={styles.profile}>
             <Ionicons name="person" size={18} color="#fff" />
@@ -162,7 +161,7 @@ export default function EditProductScreen() {
           <TextInput
             style={[styles.input, styles.disabledInput]}
             value={form.itemCode}
-            editable={false} // ห้ามแก้ไข ID
+            editable={false}
           />
         </View>
 
@@ -269,7 +268,7 @@ export default function EditProductScreen() {
 
       {/* MENU MODAL */}
       <Modal animationType="fade" transparent={true} visible={menuVisible} onRequestClose={() => setMenuVisible(false)}>
-        <View style={styles.menuOverlay}>
+        <SafeAreaView style={styles.menuOverlay}>
           <View style={styles.overlayHeader}>
             <TouchableOpacity onPress={() => setMenuVisible(false)} style={styles.closeButton}>
               <Ionicons name="close" size={28} color="#fff" />
@@ -277,40 +276,102 @@ export default function EditProductScreen() {
             <Text style={styles.overlayLogo}>Inventor.io</Text>
             <View style={{ width: 28 }} />
           </View>
+
           <View style={styles.overlayLinksContainer}>
-            {menuItems.map((menu, idx) => (
-              <TouchableOpacity key={idx} onPress={() => setMenuVisible(false)}>
-                <Text style={styles.overlayMenuText}>{menu}</Text>
+            {MENU_ITEMS.map((menu, idx) => (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push(menu.path as any);
+                }}
+              >
+                <Text style={styles.overlayMenuText}>{menu.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
-          <TouchableOpacity style={styles.logoutButton} onPress={() => setMenuVisible(false)}>
+
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutText}>Log out</Text>
           </TouchableOpacity>
-        </View>
+        </SafeAreaView>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB", paddingTop: 50 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, marginBottom: 10, height: 50 },
+  container: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+    paddingTop: Platform.OS === "android" ? 30 : 0,
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
   logo: { fontSize: 20, fontWeight: "bold", color: "#1F2937" },
-  profile: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#6C2BD9", justifyContent: "center", alignItems: "center" },
+  profile: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#6C2BD9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   scrollContent: { paddingHorizontal: 24, paddingBottom: 120 },
   inputGroup: { marginBottom: 16 },
   label: { fontSize: 14, fontWeight: "600", color: "#1F2937", marginBottom: 8 },
-  input: { backgroundColor: "#F3F4F6", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, color: "#1F2937" },
+  input: {
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: "#1F2937",
+  },
   disabledInput: { backgroundColor: "#E5E7EB", color: "#6B7280" },
-  saveButton: { backgroundColor: "#4C1D95", borderRadius: 12, paddingVertical: 16, alignItems: "center", marginTop: 10, shadowColor: "#4C1D95", shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
+  saveButton: {
+    backgroundColor: "#4C1D95",
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginTop: 10,
+    elevation: 3,
+  },
   saveButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  bottom: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "#fff", flexDirection: "row", justifyContent: "space-around", paddingVertical: 12, borderTopWidth: 1, borderColor: "#F3F4F6", height: 70 },
+  bottom: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderColor: "#F3F4F6",
+    height: 70,
+  },
   menuItem: { alignItems: "center" },
   menuText: { color: "#6C2BD9", fontWeight: "bold", fontSize: 11, marginTop: 4 },
   menuGray: { color: "#C4B5FD", fontSize: 11, marginTop: 4 },
-  menuOverlay: { flex: 1, backgroundColor: "#4C1D95", paddingTop: 50, paddingHorizontal: 24, justifyContent: "space-between", paddingBottom: 40 },
-  overlayHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", height: 50 },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: "#4C1D95",
+    paddingHorizontal: 24,
+    justifyContent: "space-between",
+    paddingBottom: 20,
+  },
+  overlayHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    height: 50,
+  },
   closeButton: { padding: 4 },
   overlayLogo: { fontSize: 20, fontWeight: "bold", color: "#fff" },
   overlayLinksContainer: { alignItems: "center", justifyContent: "center", gap: 25 },

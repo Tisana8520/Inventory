@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const API_BASE_URL = "http://119.59.102.161:3061";
 
@@ -24,6 +25,15 @@ const MIC_BRANDS = [
   "Fifine Mics",
   "Razer Mics",
   "Elgato Mics",
+];
+
+// รายการเมนูนำทางใน Overlay Modal
+const MENU_ITEMS = [
+  { name: "Home", path: "/home" },
+  { name: "Products", path: "/product" },
+  { name: "Categories", path: "/categories" },
+  { name: "Add Microphone", path: "/add" },
+  { name: "Settings", path: "/settings" },
 ];
 
 export default function AddProductScreen() {
@@ -41,8 +51,6 @@ export default function AddProductScreen() {
     status: "Active",
     imageUrl: "",
   });
-
-  const menuItems = ["Home", "Products", "Categories", "Stores", "Finances", "Settings"];
 
   const showAlert = (title: string, message: string, onOk?: () => void) => {
     if (Platform.OS === "web") {
@@ -101,7 +109,6 @@ export default function AddProductScreen() {
           router.push("/product");
         });
       } else {
-        // กรณี API ตอบกลับ error อื่น ให้เปลี่ยนเป็นแจ้งสำเร็จ local และเปลี่ยนหน้า
         showAlert("บันทึกสำเร็จ", "เพิ่มสินค้าเรียบร้อยแล้ว", () => {
           router.push("/product");
         });
@@ -116,8 +123,13 @@ export default function AddProductScreen() {
     }
   };
 
+  const handleLogout = () => {
+    setMenuVisible(false);
+    router.replace("/");
+  };
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => setMenuVisible(true)}>
@@ -283,7 +295,7 @@ export default function AddProductScreen() {
         visible={menuVisible}
         onRequestClose={() => setMenuVisible(false)}
       >
-        <View style={styles.menuOverlay}>
+        <SafeAreaView style={styles.menuOverlay}>
           <View style={styles.overlayHeader}>
             <TouchableOpacity onPress={() => setMenuVisible(false)} style={styles.closeButton}>
               <Ionicons name="close" size={28} color="#fff" />
@@ -293,24 +305,30 @@ export default function AddProductScreen() {
           </View>
 
           <View style={styles.overlayLinksContainer}>
-            {menuItems.map((menu, idx) => (
-              <TouchableOpacity key={idx} onPress={() => setMenuVisible(false)}>
-                <Text style={styles.overlayMenuText}>{menu}</Text>
+            {MENU_ITEMS.map((menu, idx) => (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push(menu.path as any);
+                }}
+              >
+                <Text style={styles.overlayMenuText}>{menu.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <TouchableOpacity style={styles.logoutButton} onPress={() => setMenuVisible(false)}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutText}>Log out</Text>
           </TouchableOpacity>
-        </View>
+        </SafeAreaView>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB", paddingTop: 50 },
+  container: { flex: 1, backgroundColor: "#F9FAFB" },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, marginBottom: 10, height: 50 },
   logo: { fontSize: 20, fontWeight: "bold", color: "#1F2937" },
   profile: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#6C2BD9", justifyContent: "center", alignItems: "center" },
@@ -335,7 +353,7 @@ const styles = StyleSheet.create({
   menuText: { color: "#6C2BD9", fontWeight: "bold", fontSize: 11, marginTop: 4 },
   menuGray: { color: "#C4B5FD", fontSize: 11, marginTop: 4 },
   
-  menuOverlay: { flex: 1, backgroundColor: "#4C1D95", paddingTop: 50, paddingHorizontal: 24, justifyContent: "space-between", paddingBottom: 40 },
+  menuOverlay: { flex: 1, backgroundColor: "#4C1D95", paddingHorizontal: 24, justifyContent: "space-between", paddingBottom: 20 },
   overlayHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", height: 50 },
   closeButton: { padding: 4 },
   overlayLogo: { fontSize: 20, fontWeight: "bold", color: "#fff" },

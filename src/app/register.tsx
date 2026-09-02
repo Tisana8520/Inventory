@@ -3,26 +3,25 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-export default function Index() {
+export default function RegisterScreen() {
   const router = useRouter();
 
-  // 1. State สำหรับเก็บค่า Username, Password และสถานะการโหลด
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ฟังก์ชันแจ้งเตือนรองรับทั้ง Web และ Mobile
   const showAlert = (title: string, message: string, onOk?: () => void) => {
     if (Platform.OS === "web") {
       alert(`${title}\n${message}`);
@@ -32,10 +31,14 @@ export default function Index() {
     }
   };
 
-  // 2. ฟังก์ชันจัดการการ Log In (รองรับ Route ทั้ง /login และ /api/login)
-  const handleLogin = async () => {
-    if (!username.trim() || !password.trim()) {
-      showAlert("แจ้งเตือน", "กรุณากรอก Username และ Password ให้ครบถ้วน");
+  const handleRegister = async () => {
+    if (!username.trim() || !password.trim() || !confirmPassword.trim()) {
+      showAlert("แจ้งเตือน", "กรุณากรอกข้อมูลให้ครบถ้วน");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      showAlert("ข้อผิดพลาด", "รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน");
       return;
     }
 
@@ -44,54 +47,36 @@ export default function Index() {
     const payload = { username: username.trim(), password: password.trim() };
 
     try {
-      // 1. ลองยิงไปที่ /login ก่อน
-      let res = await fetch(`${BASE_URL}/login`, {
+      let res = await fetch(`${BASE_URL}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      // 2. ถ้าไม่เจอ (404) ลองยิงไปที่ /api/login
       if (res.status === 404) {
-        res = await fetch(`${BASE_URL}/api/login`, {
+        res = await fetch(`${BASE_URL}/api/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
       }
 
-      // เช็กประเภทข้อมูลที่ตอบกลับมาจาก Server
       const contentType = res.headers.get("content-type");
       let data: any = {};
-
       if (contentType && contentType.includes("application/json")) {
         data = await res.json();
       }
 
-      if (res.ok || data.success || data.token) {
-        showAlert("สำเร็จ", "เข้าสู่ระบบเรียบร้อยแล้ว", () => {
-          router.replace("/home");
+      if (res.ok || data.success) {
+        showAlert("สำเร็จ", "สมัครสมาชิกเรียบร้อยแล้ว กรุณาเข้าสู่ระบบ", () => {
+          router.replace("/");
         });
       } else {
-        // หากฝั่ง Server ตอบ Error กลับมา
-        showAlert(
-          "แจ้งเตือน",
-          data.message || "ไม่สามารถล็อกอินผ่าน API ได้ (กำลังพาเข้าสู่ระบบชั่วคราว)",
-          () => {
-            router.replace("/home");
-          }
-        );
+        showAlert("ข้อผิดพลาด", data.message || "ไม่สามารถลงทะเบียนได้");
       }
-    } catch (error: any) {
-      console.error("Login Fetch Error:", error);
-      // หากเกิดข้อผิดพลาดในการเชื่อมต่อ (เช่น Network Error) ให้สลับไปหน้าหลักเพื่อพัฒนาต่อได้
-      showAlert(
-        "แจ้งเตือนระบบ",
-        "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ (เข้าสู่ระบบโหมดออฟไลน์)",
-        () => {
-          router.replace("/home");
-        }
-      );
+    } catch (error) {
+      console.error("Register Error:", error);
+      showAlert("เชื่อมต่อล้มเหลว", "ไม่สามารถติดต่อ Server ได้");
     } finally {
       setLoading(false);
     }
@@ -101,15 +86,14 @@ export default function Index() {
     <LinearGradient colors={["#6366F1", "#4C1D95"]} style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.card}>
-          {/* ICON LOGO */}
           <View style={styles.iconWrapper}>
-            <Ionicons name="cube" size={56} color="#D97706" />
+            <Ionicons name="person-add" size={48} color="#D97706" />
           </View>
 
-          <Text style={styles.title}>Inventor.io</Text>
-          <Text style={styles.subtitle}>Welcome Back</Text>
+          <Text style={styles.title}>Create Account</Text>
+          <Text style={styles.subtitle}>Sign up to get started</Text>
 
-          {/* Input Username */}
+          {/* Username */}
           <View style={styles.inputBox}>
             <Ionicons name="person-outline" size={20} color="#9CA3AF" />
             <TextInput
@@ -122,7 +106,7 @@ export default function Index() {
             />
           </View>
 
-          {/* Input Password */}
+          {/* Password */}
           <View style={styles.inputBox}>
             <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" />
             <TextInput
@@ -135,30 +119,41 @@ export default function Index() {
             />
           </View>
 
-          {/* Login Button */}
+          {/* Confirm Password */}
+          <View style={styles.inputBox}>
+            <Ionicons name="checkmark-circle-outline" size={20} color="#9CA3AF" />
+            <TextInput
+              placeholder="Confirm Password"
+              placeholderTextColor="#9CA3AF"
+              secureTextEntry
+              style={styles.input}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+            />
+          </View>
+
+          {/* Submit Button */}
           <TouchableOpacity
             style={[styles.button, loading && { opacity: 0.8 }]}
-            onPress={handleLogin}
+            onPress={handleRegister}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Log In</Text>
+              <Text style={styles.buttonText}>Sign Up</Text>
             )}
           </TouchableOpacity>
 
-          {/* Register Link (ส่วนที่เพิ่มเข้ามา) */}
-          <View style={styles.registerBox}>
-            <Text style={styles.registerText}>Don't have an account? </Text>
-            <Link href="/register" asChild>
+          {/* Back to Login */}
+          <View style={styles.loginBox}>
+            <Text style={styles.loginText}>Already have an account? </Text>
+            <Link href="/" asChild>
               <TouchableOpacity>
-                <Text style={styles.registerLink}>Sign Up</Text>
+                <Text style={styles.loginLink}>Log In</Text>
               </TouchableOpacity>
             </Link>
           </View>
-
-          <Text style={styles.footer}>Inventory Management System</Text>
         </View>
       </SafeAreaView>
     </LinearGradient>
@@ -183,8 +178,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     paddingVertical: 36,
     alignItems: "center",
-
-    // แก้ไข Deprecated Props ของ Shadow บน Web และ Native
     ...Platform.select({
       web: {
         boxShadow: "0px 10px 25px rgba(0, 0, 0, 0.15)",
@@ -198,7 +191,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   title: {
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: "bold",
     color: "#5B21B6",
     textAlign: "center",
@@ -241,24 +234,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 16,
   },
-  registerBox: {
+  loginBox: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 18,
+    marginTop: 20,
   },
-  registerText: {
+  loginText: {
     color: "#6B7280",
     fontSize: 14,
   },
-  registerLink: {
+  loginLink: {
     color: "#5B21B6",
     fontWeight: "bold",
     fontSize: 14,
-  },
-  footer: {
-    textAlign: "center",
-    color: "#9CA3AF",
-    fontSize: 12,
-    marginTop: 20,
   },
 });

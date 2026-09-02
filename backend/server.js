@@ -1,458 +1,177 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Link, useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+const express = require('express');
+const mysql = require('mysql2');
+const cors = require('cors');
+const bcrypt = require('bcryptjs');
 
-interface Product {
-  id: string | number;
-  name: string;
-  stock: number;
-  price: number;
-  category?: string;
-  image_url?: string;
-}
+const app = express();
+app.use(cors());
+app.use(express.json());
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_BASE_URL || "http://119.59.102.161:3061";
+// ==================== DATABASE CONNECTION ====================
+const db = mysql.createConnection({
+  host: 'localhost',
+  user: 'std6730202661',
+  password: 'Pq7@j9Bz',
+  database: 'ip_std6730202661'
+});
 
-export default function ProductScreen() {
-  const router = useRouter();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [menuVisible, setMenuVisible] = useState(false);
+db.connect((err) => {
+  if (err) {
+    console.error('Database connection failed:', err.message);
+  } else {
+    console.log('Connected to MySQL Database!');
+  }
+});
 
-  // State สำหรับ Modal แก้ไขสินค้า
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [saving, setSaving] = useState(false);
+// ==================== AUTHENTICATION APIs ====================
 
-  const menuItems = ["Home", "Products", "Categories", "Stores", "Finances", "Settings"];
+// 1. API Register (สมัครสมาชิก - ปรับแก้ไม่บังคับ email)
+app.post(['/register', '/api/register'], async (req, res) => {
+  const { username, email, password } = req.body;
 
-  const showAlert = (title: string, message: string, onOk?: () => void) => {
-    if (Platform.OS === "web") {
-      alert(`${title}\n${message}`);
-      if (onOk) onOk();
-    } else {
-      Alert.alert(title, message, [{ text: "ตกลง", onPress: onOk }]);
-    }
-  };
+  // ตรวจสอบเฉพาะ username และ password
+  if (!username || !password) {
+    return res.status(400).json({ success: false, message: 'กรุณากรอก Username และ Password' });
+  }
 
-  // ==================== FETCH PRODUCTS ====================
-  const fetchProducts = async () => {
-    try {
-      setLoading(true);
-      let res;
-      
-      try {
-        res = await fetch(`${API_BASE_URL}/api/products`);
-      } catch (e) {
-        res = await fetch(`${API_BASE_URL}/products`);
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const userEmail = email || `${username}@example.com`; // หากไม่มี email ให้สร้าง email ชั่วคราวให้
+
+    // ตรวจสอบว่ามี username นี้อยู่แล้วหรือไม่
+    const checkSql = 'SELECT id FROM users WHERE username = ? LIMIT 1';
+    db.query(checkSql, [username], (checkErr, checkResults) => {
+      if (checkErr) {
+        return res.status(500).json({ success: false, message: 'Database error', error: checkErr.message });
       }
 
-      if (res && res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const formatted = data.map((item: any, idx: number) => {
-            let imgUrl = item.image_url || item.image || null;
+      if (checkResults.length > 0) {
+        return res.status(400).json({ success: false, message: 'Username นี้มีผู้ใช้งานแล้ว' });
+      }
 
-            if (imgUrl && imgUrl.startsWith("/")) {
-              imgUrl = `${API_BASE_URL}${imgUrl}`;
-            } else if (!imgUrl || !imgUrl.startsWith("http")) {
-              // รูป Default กรณีไม่มีรูปภาพ
-              imgUrl = "https://cdn-icons-png.flaticon.com/512/3083/3083174.png";
+      // บันทึกลง Database (ลองใส่ email หรือถ้าตารางไม่มี email จะใช้เฉพาะ username, password)
+      const insertSql = 'INSERT INTO users (username, email, password) VALUES (?, ?, ?)';
+      db.query(insertSql, [username, userEmail, hashedPassword], (err, result) => {
+        if (err) {
+          // กรณีตาราง users ใน DB ไม่มีคอลัมน์ email ให้ถอยมาใช้คอลัมน์เฉพาะ username, password
+          const fallbackSql = 'INSERT INTO users (username, password) VALUES (?, ?)';
+          db.query(fallbackSql, [username, hashedPassword], (fbErr, fbResult) => {
+            if (fbErr) {
+              return res.status(400).json({ success: false, message: 'ไม่สามารถสมัครสมาชิกได้', error: fbErr.message });
             }
-
-            return {
-              id: item.id || item.P_ID || item.M_ID || idx + 1,
-              name: item.name || item.M_Name || "Microphone",
-              stock: Number(item.stock) || 0,
-              price: Number(item.price) || 0,
-              category: item.category || "General Mics",
-              image_url: imgUrl,
-            };
+            return res.status(201).json({ success: true, message: 'สมัครสมาชิกสำเร็จ' });
           });
-          setProducts(formatted);
+        } else {
+          return res.status(201).json({ success: true, message: 'สมัครสมาชิกสำเร็จ' });
         }
-      }
-    } catch (error) {
-      console.log("Error fetching products:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchProducts();
-    }, [])
-  );
-
-  // ==================== DELETE PRODUCT ====================
-  const handleDelete = (id: string | number, name: string) => {
-    const confirmDelete = async () => {
-      try {
-        let res = await fetch(`${API_BASE_URL}/api/products/${id}`, { method: "DELETE" });
-        if (!res.ok) {
-          await fetch(`${API_BASE_URL}/products/${id}`, { method: "DELETE" });
-        }
-      } catch (error) {
-        console.log("Delete backend error");
-      } finally {
-        setProducts((prev) => prev.filter((item) => item.id !== id));
-        showAlert("สำเร็จ", `ลบรายการ "${name}" เรียบร้อยแล้ว`);
-      }
-    };
-
-    if (Platform.OS === "web") {
-      if (confirm(`คุณต้องการลบ "${name}" ใช่หรือไม่?`)) {
-        confirmDelete();
-      }
-    } else {
-      Alert.alert("ยืนยันการลบ", `คุณต้องการลบ "${name}" ใช่หรือไม่?`, [
-        { text: "ยกเลิก", style: "cancel" },
-        { text: "ลบ", style: "destructive", onPress: confirmDelete },
-      ]);
-    }
-  };
-
-  // ==================== OPEN EDIT MODAL ====================
-  const openEditModal = (product: Product) => {
-    setEditingProduct({ ...product });
-    setEditModalVisible(true);
-  };
-
-  // ==================== SAVE EDITED PRODUCT ====================
-  const handleSaveEdit = async () => {
-    if (!editingProduct || !editingProduct.name.trim()) {
-      showAlert("แจ้งเตือน", "กรุณากรอกชื่อสินค้า");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      let res = await fetch(`${API_BASE_URL}/api/products/${editingProduct.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editingProduct),
       });
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+});
 
-      if (!res.ok) {
-        await fetch(`${API_BASE_URL}/products/${editingProduct.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(editingProduct),
-        });
-      }
-    } catch (error) {
-      console.log("Edit backend error");
-    } finally {
-      setProducts((prev) =>
-        prev.map((item) => (item.id === editingProduct.id ? editingProduct : item))
-      );
-      showAlert("สำเร็จ", "อัปเดตข้อมูลสินค้าเรียบร้อยแล้ว");
-      setEditModalVisible(false);
-      setSaving(false);
+// 2. API Login (เข้าสู่ระบบ)
+app.post(['/login', '/api/login'], (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ success: false, message: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
+  }
+
+  const sql = 'SELECT * FROM users WHERE username = ? LIMIT 1';
+  db.query(sql, [username], async (err, results) => {
+    if (err || results.length === 0) {
+      return res.status(401).json({ success: false, message: 'Username หรือ Password ไม่ถูกต้อง' });
     }
-  };
 
-  return (
-    <View style={styles.container}>
-      {/* HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => setMenuVisible(true)}>
-          <Ionicons name="menu" size={28} color="#6C2BD9" />
-        </TouchableOpacity>
+    const user = results[0];
+    
+    // ตรวจสอบรหัสผ่าน (รองรับทั้ง bcrypt และ Plain Text)
+    let isMatch = false;
+    try {
+      isMatch = await bcrypt.compare(password, user.password);
+    } catch (e) {
+      isMatch = (password === user.password);
+    }
 
-        <Text style={styles.logo}>Products</Text>
+    if (!isMatch && password === user.password) {
+      isMatch = true;
+    }
 
-        <Link href="/settings" asChild>
-          <TouchableOpacity style={styles.profile}>
-            <Ionicons name="person" size={18} color="#fff" />
-          </TouchableOpacity>
-        </Link>
-      </View>
+    if (isMatch) {
+      delete user.password;
+      res.json({ success: true, message: 'เข้าสู่ระบบสำเร็จ', token: 'sample-token', user });
+    } else {
+      res.status(401).json({ success: false, message: 'Username หรือ Password ไม่ถูกต้อง' });
+    }
+  });
+});
 
-      {/* TOP ACTION BAR */}
-      <View style={styles.actionBar}>
-        <TouchableOpacity style={styles.iconBtn}>
-          <Ionicons name="search" size={20} color="#6B7280" />
-        </TouchableOpacity>
+// ==================== PRODUCT MANAGEMENT APIs ====================
 
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => router.push("/add")}
-        >
-          <Ionicons name="add" size={18} color="#fff" />
-          <Text style={styles.addBtnText}>Add Product</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.filterBtn}>
-          <Text style={styles.filterText}>Filter</Text>
-          <Ionicons name="filter" size={16} color="#6B7280" />
-        </TouchableOpacity>
-      </View>
-
-      {/* TITLE & COUNT */}
-      <Text style={styles.sectionTitle}>Product Inventory ({products.length})</Text>
-
-      {/* PRODUCT LIST */}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-        {loading ? (
-          <ActivityIndicator color="#6C2BD9" size="large" style={{ marginTop: 40 }} />
-        ) : (
-          products.map((item) => (
-            <View key={item.id} style={styles.card}>
-              <View style={styles.cardLeft}>
-                <View style={styles.imgBox}>
-                  {item.image_url ? (
-                    <Image source={{ uri: item.image_url }} style={styles.img} />
-                  ) : (
-                    <Ionicons name="mic" size={26} color="#4B5563" />
-                  )}
-                </View>
-                <View style={styles.info}>
-                  <Text style={styles.prodName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.prodStock}>Stock : {item.stock} pcs</Text>
-                </View>
-              </View>
-
-              <View style={styles.cardRight}>
-                <Text style={styles.prodPrice}>
-                  {item.price ? item.price.toLocaleString() : "-"}
-                </Text>
-
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={[styles.actionIconBtn, { backgroundColor: "#EEF2FF" }]}
-                    onPress={() => openEditModal(item)}
-                  >
-                    <Ionicons name="pencil" size={16} color="#4F46E5" />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.actionIconBtn, { backgroundColor: "#FEE2E2" }]}
-                    onPress={() => handleDelete(item.id, item.name)}
-                  >
-                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          ))
-        )}
-      </ScrollView>
-
-      {/* EDIT PRODUCT MODAL */}
-      <Modal visible={editModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Edit Product</Text>
-
-            {editingProduct && (
-              <>
-                <Text style={styles.inputLabel}>Name</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={editingProduct.name}
-                  onChangeText={(text) =>
-                    setEditingProduct({ ...editingProduct, name: text })
-                  }
-                  placeholder="Microphone Model"
-                />
-
-                <View style={{ flexDirection: "row", gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>Stock</Text>
-                    <TextInput
-                      style={styles.modalInput}
-                      keyboardType="numeric"
-                      value={String(editingProduct.stock)}
-                      onChangeText={(text) =>
-                        setEditingProduct({
-                          ...editingProduct,
-                          stock: Number(text) || 0,
-                        })
-                      }
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>Price (THB)</Text>
-                    <TextInput
-                      style={styles.modalInput}
-                      keyboardType="numeric"
-                      value={String(editingProduct.price)}
-                      onChangeText={(text) =>
-                        setEditingProduct({
-                          ...editingProduct,
-                          price: Number(text) || 0,
-                        })
-                      }
-                    />
-                  </View>
-                </View>
-
-                <Text style={styles.inputLabel}>Image URL</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  value={editingProduct.image_url}
-                  onChangeText={(text) =>
-                    setEditingProduct({
-                      ...editingProduct,
-                      image_url: text,
-                    })
-                  }
-                  placeholder="https://..."
-                />
-
-                <View style={styles.modalBtnRow}>
-                  <TouchableOpacity
-                    style={[styles.modalBtn, { backgroundColor: "#E5E7EB" }]}
-                    onPress={() => setEditModalVisible(false)}
-                  >
-                    <Text style={{ color: "#374151", fontWeight: "600" }}>Cancel</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.modalBtn, { backgroundColor: "#6C2BD9" }]}
-                    onPress={handleSaveEdit}
-                    disabled={saving}
-                  >
-                    {saving ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>Save</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* MENU MODAL */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={menuVisible}
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <View style={styles.menuOverlay}>
-          <View style={styles.overlayHeader}>
-            <TouchableOpacity onPress={() => setMenuVisible(false)}>
-              <Ionicons name="close" size={28} color="#fff" />
-            </TouchableOpacity>
-            <Text style={styles.overlayLogo}>Inventor.io</Text>
-            <View style={{ width: 28 }} />
-          </View>
-
-          <View style={styles.overlayLinksContainer}>
-            {menuItems.map((menu, idx) => (
-              <TouchableOpacity key={idx} onPress={() => setMenuVisible(false)}>
-                <Text style={styles.overlayMenuText}>{menu}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TouchableOpacity style={styles.logoutButton} onPress={() => setMenuVisible(false)}>
-            <Text style={styles.logoutText}>Log out</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
-
-      {/* BOTTOM NAV */}
-      <View style={styles.bottom}>
-        <Link href="/home" asChild>
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="home-outline" size={22} color="#C4B5FD" />
-            <Text style={styles.menuGray}>Home</Text>
-          </TouchableOpacity>
-        </Link>
-
-        <Link href="/add" asChild>
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="add-circle-outline" size={22} color="#C4B5FD" />
-            <Text style={styles.menuGray}>Add</Text>
-          </TouchableOpacity>
-        </Link>
-
-        <Link href="/product" asChild>
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="cube" size={22} color="#6C2BD9" />
-            <Text style={styles.menuText}>Products</Text>
-          </TouchableOpacity>
-        </Link>
-
-        <Link href="/categories" asChild>
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="grid-outline" size={22} color="#C4B5FD" />
-            <Text style={styles.menuGray}>Categories</Text>
-          </TouchableOpacity>
-        </Link>
-      </View>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB", paddingTop: 50 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, marginBottom: 16 },
-  logo: { fontSize: 20, fontWeight: "bold", color: "#1F2937" },
-  profile: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#6C2BD9", justifyContent: "center", alignItems: "center" },
+// 3. API Fetch Products (ดึงรายการสินค้าทั้งหมด)
+app.get(['/products', '/api/products'], (req, res) => {
+  const sql = 'SELECT id, name, stock, price, category, image AS image_url FROM Inventory ORDER BY id DESC';
   
-  actionBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, marginBottom: 20 },
-  iconBtn: { width: 38, height: 38, borderRadius: 10, backgroundColor: "#F3F4F6", justifyContent: "center", alignItems: "center" },
-  addBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#311076", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, gap: 6 },
-  addBtnText: { color: "#fff", fontWeight: "600", fontSize: 13 },
-  filterBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, gap: 6 },
-  filterText: { fontSize: 13, color: "#4B5563" },
+  db.query(sql, (err, results) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Database query error', error: err.message });
+    }
+    res.json(results);
+  });
+});
 
-  sectionTitle: { fontSize: 15, fontWeight: "bold", color: "#1F2937", paddingHorizontal: 24, marginBottom: 12 },
+// 4. API Add Product (เพิ่มสินค้าใหม่)
+app.post(['/products', '/api/products'], (req, res) => {
+  const { name, stock, price, category, image_url } = req.body;
+  
+  if (!name) {
+    return res.status(400).json({ success: false, message: 'กรุณากรอกชื่อสินค้า' });
+  }
 
-  card: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#F3F4F6", marginHorizontal: 24, padding: 14, borderRadius: 16, marginBottom: 12 },
-  cardLeft: { flexDirection: "row", alignItems: "center", flex: 1 },
-  imgBox: { width: 50, height: 50, backgroundColor: "#fff", borderRadius: 10, justifyContent: "center", alignItems: "center", marginRight: 12 },
-  img: { width: 40, height: 40, resizeMode: "contain" },
-  info: { flex: 1 },
-  prodName: { fontSize: 15, fontWeight: "bold", color: "#1F2937", marginBottom: 2 },
-  prodStock: { fontSize: 12, color: "#6B7280" },
+  const sql = 'INSERT INTO Inventory (name, stock, price, category, image) VALUES (?, ?, ?, ?, ?)';
+  const values = [name, stock || 0, price || 0, category || 'General Mics', image_url || ''];
 
-  cardRight: { alignItems: "flex-end", gap: 6 },
-  prodPrice: { fontSize: 15, fontWeight: "bold", color: "#4C1D95" },
-  actionRow: { flexDirection: "row", gap: 6 },
-  actionIconBtn: { width: 28, height: 28, borderRadius: 6, justifyContent: "center", alignItems: "center" },
+  db.query(sql, values, (err, result) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Insert failed', error: err.message });
+    }
+    res.status(201).json({ success: true, message: 'เพิ่มสินค้าเรียบร้อย', id: result.insertId });
+  });
+});
 
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center", paddingHorizontal: 20 },
-  modalCard: { width: "100%", maxWidth: 380, backgroundColor: "#fff", borderRadius: 16, padding: 24 },
-  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 16, color: "#1F2937" },
-  inputLabel: { fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 4 },
-  modalInput: { backgroundColor: "#F3F4F6", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, marginBottom: 14, color: "#1F2937" },
-  modalBtnRow: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 10 },
-  modalBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+// 5. API Update Product (แก้ไขสินค้า)
+app.put(['/products/:id', '/api/products/:id'], (req, res) => {
+  const { id } = req.params;
+  const { name, stock, price, category, image_url } = req.body;
 
-  menuOverlay: { flex: 1, backgroundColor: "#4C1D95", paddingTop: 50, paddingHorizontal: 24, justifyContent: "space-between", paddingBottom: 40 },
-  overlayHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", height: 50 },
-  overlayLogo: { fontSize: 20, fontWeight: "bold", color: "#fff" },
-  overlayLinksContainer: { alignItems: "center", justifyContent: "center", gap: 25 },
-  overlayMenuText: { color: "#fff", fontSize: 22, fontWeight: "600" },
-  logoutButton: { alignItems: "center", paddingVertical: 10 },
-  logoutText: { color: "#fff", fontSize: 16, fontWeight: "500", opacity: 0.9 },
+  const sql = 'UPDATE Inventory SET name = ?, stock = ?, price = ?, category = ?, image = ? WHERE id = ?';
+  const values = [name, stock || 0, price || 0, category || 'General Mics', image_url || '', id];
 
-  bottom: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "#fff", flexDirection: "row", justifyContent: "space-around", paddingVertical: 12, borderTopWidth: 1, borderColor: "#F3F4F6", height: 70 },
-  menuItem: { alignItems: "center" },
-  menuText: { color: "#6C2BD9", fontWeight: "bold", fontSize: 11, marginTop: 4 },
-  menuGray: { color: "#C4B5FD", fontSize: 11, marginTop: 4 },
+  db.query(sql, values, (err, result) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Update failed', error: err.message });
+    }
+    res.json({ success: true, message: 'อัปเดตข้อมูลสินค้าเรียบร้อย' });
+  });
+});
+
+// 6. API Delete Product (ลบสินค้า)
+app.delete(['/products/:id', '/api/products/:id'], (req, res) => {
+  const { id } = req.params;
+  const sql = 'DELETE FROM Inventory WHERE id = ?';
+
+  db.query(sql, [id], (err, result) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Delete failed', error: err.message });
+    }
+    res.json({ success: true, message: 'ลบสินค้าเรียบร้อย' });
+  });
+});
+
+// ==================== SERVER LISTEN ====================
+// กำหนดพอร์ตเป็น 3061 ตามที่เซิร์ฟเวอร์ใช้
+const PORT = process.env.PORT || 3061;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

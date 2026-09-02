@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link, useFocusEffect } from "expo-router";
+import { Link, useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface Category {
   id: string | number;
@@ -21,30 +22,32 @@ interface Category {
   icon: string;
 }
 
-export default function CategoriesScreen() {
-  // ตั้งค่าหมวดหมู่เริ่มต้นเป็นยี่ห้อไมโครโฟนต่าง ๆ
-  const [categories, setCategories] = useState<Category[]>([
-    { id: 1, name: "HyperX Mics", items: "12 items", icon: "mic-outline" },
-    { id: 2, name: "Shure Mics", items: "8 items", icon: "mic-outline" },
-    { id: 3, name: "RODE Mics", items: "5 items", icon: "mic-outline" },
-    { id: 4, name: "Fifine Mics", items: "4 items", icon: "mic-outline" },
-  ]);
+const DEFAULT_CATEGORIES: Category[] = [
+  { id: 1, name: "HyperX Mics", items: "12 items", icon: "mic-outline" },
+  { id: 2, name: "Shure Mics", items: "8 items", icon: "mic-outline" },
+  { id: 3, name: "RODE Mics", items: "5 items", icon: "mic-outline" },
+  { id: 4, name: "Fifine Mics", items: "4 items", icon: "mic-outline" },
+];
 
+const MENU_ITEMS = [
+  { name: "Home", path: "/home" },
+  { name: "Products", path: "/product" },
+  { name: "Categories", path: "/categories" },
+  { name: "Add Microphone", path: "/add" },
+  { name: "Settings", path: "/settings" },
+];
+
+const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL || "http://119.59.102.161:3061";
+
+export default function CategoriesScreen() {
+  const router = useRouter();
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const menuItems = ["Home", "Products", "Categories", "Stores", "Finances", "Settings"];
-  const BASE_URL = "http://119.59.102.161:3061";
-
-  // ส่งคืนไอคอนไมโครโฟนเสมอ
-  const getCategoryIcon = (): string => {
-    return "mic-outline";
-  };
-
-  // ฟังก์ชัน Alert สำหรับ Web และ Native
   const showAlert = (title: string, message: string) => {
     if (Platform.OS === "web") {
       alert(`${title}\n${message}`);
@@ -57,28 +60,29 @@ export default function CategoriesScreen() {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${BASE_URL}/api/categories`);
-      if (res.ok) {
+      let res;
+
+      try {
+        res = await fetch(`${BASE_URL}/api/categories`);
+      } catch {
+        res = await fetch(`${BASE_URL}/categories`);
+      }
+
+      if (res && res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          // กรองข้อมูลเฉพาะรายการที่เป็นไมค์หรือยี่ห้อไมค์
-          const filtered = data.filter((item: any) => {
-            const catName = (item.name || item.category || item.category_name || "").toLowerCase();
-            return catName.includes("mic") || catName.includes("hyperx") || catName.includes("shure") || catName.includes("rode") || catName.includes("fifine");
-          });
+          const formatted = data.map((item: any, idx: number) => {
+            const catName = item.name || item.category || item.category_name || "Mic Category";
+            const itemCount = item.count ?? item.total ?? item.items_count ?? 0;
 
-          if (filtered.length > 0) {
-            const formatted = filtered.map((item: any, idx: number) => {
-              const catName = item.name || item.category || item.category_name || "Mic Brand";
-              return {
-                id: item.id || idx + 1,
-                name: catName,
-                items: `${item.count || 0} items`,
-                icon: getCategoryIcon(),
-              };
-            });
-            setCategories(formatted);
-          }
+            return {
+              id: item.id || idx + 1,
+              name: catName,
+              items: `${itemCount} items`,
+              icon: "mic-outline",
+            };
+          });
+          setCategories(formatted);
         }
       }
     } catch (error) {
@@ -102,56 +106,65 @@ export default function CategoriesScreen() {
     }
 
     setSaving(true);
-    // เติมคำว่า Mics ต่อท้ายอัตโนมัติหากผู้ใช้ไม่ได้พิมพ์มา
     let catName = newCatName.trim();
     if (!catName.toLowerCase().includes("mic")) {
       catName = `${catName} Mics`;
     }
 
     try {
-      const res = await fetch(`${BASE_URL}/api/categories`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: catName }),
-      });
-
-      if (res.ok) {
-        const createdData = await res.json().catch(() => ({}));
-        
-        setCategories((prev) => [
-          ...prev,
-          {
-            id: createdData.id || Date.now(),
-            name: catName,
-            items: "0 items",
-            icon: getCategoryIcon(),
-          },
-        ]);
-
-        showAlert("สำเร็จ", "เพิ่มหมวดหมู่ไมโครโฟนเรียบร้อยแล้ว");
-        setNewCatName("");
-        setModalVisible(false);
-      } else {
-        showAlert("ข้อผิดพลาด", "ไม่สามารถเพิ่มหมวดหมู่บนเซิร์ฟเวอร์ได้");
+      let res;
+      try {
+        res = await fetch(`${BASE_URL}/api/categories`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: catName }),
+        });
+      } catch {
+        res = await fetch(`${BASE_URL}/categories`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: catName }),
+        });
       }
+
+      const createdData = res && res.ok ? await res.json().catch(() => ({})) : {};
+
+      setCategories((prev) => [
+        ...prev,
+        {
+          id: createdData.id || Date.now(),
+          name: catName,
+          items: "0 items",
+          icon: "mic-outline",
+        },
+      ]);
+
+      showAlert("สำเร็จ", "เพิ่มหมวดหมู่เรียบร้อยแล้ว");
+      setNewCatName("");
+      setModalVisible(false);
     } catch (error) {
       console.error("Add category error:", error);
-      showAlert("ข้อผิดพลาด", "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้");
+      showAlert("ข้อผิดพลาด", "เกิดข้อผิดพลาดในการเชื่อมต่อ");
     } finally {
       setSaving(false);
     }
   };
 
+  const handleLogout = () => {
+    setMenuVisible(false);
+    router.replace("/");
+  };
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => setMenuVisible(true)}>
           <Ionicons name="menu" size={28} color="#6C2BD9" />
         </TouchableOpacity>
-        
-        <Text style={styles.logo}>Microphones</Text>
-        
+
+        <Text style={styles.logo}>Categories</Text>
+
         <TouchableOpacity style={styles.profile} onPress={() => setModalVisible(true)}>
           <Ionicons name="add" size={22} color="#fff" />
         </TouchableOpacity>
@@ -167,7 +180,7 @@ export default function CategoriesScreen() {
               <View style={styles.iconBox}>
                 <Ionicons name={category.icon as any} size={26} color="#6C2BD9" />
               </View>
-              
+
               <View style={styles.textContainer}>
                 <Text style={styles.categoryName} numberOfLines={1}>
                   {category.name}
@@ -198,6 +211,7 @@ export default function CategoriesScreen() {
               >
                 <Text style={{ color: "#374151", fontWeight: "600" }}>Cancel</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: "#6C2BD9" }]}
                 onPress={handleAddCategory}
@@ -221,7 +235,7 @@ export default function CategoriesScreen() {
         visible={menuVisible}
         onRequestClose={() => setMenuVisible(false)}
       >
-        <View style={styles.menuOverlay}>
+        <SafeAreaView style={styles.menuOverlay}>
           <View style={styles.overlayHeader}>
             <TouchableOpacity onPress={() => setMenuVisible(false)} style={styles.closeButton}>
               <Ionicons name="close" size={28} color="#fff" />
@@ -231,17 +245,23 @@ export default function CategoriesScreen() {
           </View>
 
           <View style={styles.overlayLinksContainer}>
-            {menuItems.map((menu, idx) => (
-              <TouchableOpacity key={idx} onPress={() => setMenuVisible(false)}>
-                <Text style={styles.overlayMenuText}>{menu}</Text>
+            {MENU_ITEMS.map((menu, idx) => (
+              <TouchableOpacity
+                key={idx}
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push(menu.path as any);
+                }}
+              >
+                <Text style={styles.overlayMenuText}>{menu.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <TouchableOpacity style={styles.logoutButton} onPress={() => setMenuVisible(false)}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutText}>Log out</Text>
           </TouchableOpacity>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* BOTTOM NAV */}
@@ -252,7 +272,7 @@ export default function CategoriesScreen() {
             <Text style={styles.menuGray}>Home</Text>
           </TouchableOpacity>
         </Link>
-        
+
         <Link href="/add" asChild>
           <TouchableOpacity style={styles.menuItem}>
             <Ionicons name="add-circle-outline" size={22} color="#C4B5FD" />
@@ -274,46 +294,46 @@ export default function CategoriesScreen() {
           </TouchableOpacity>
         </Link>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB", paddingTop: 50 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, marginBottom: 25, height: 50 },
+  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, marginBottom: 16 },
   logo: { fontSize: 20, fontWeight: "bold", color: "#1F2937" },
   profile: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#6C2BD9", justifyContent: "center", alignItems: "center" },
-  
+
   categoryCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F3F4F6", 
+    backgroundColor: "#F3F4F6",
     marginHorizontal: 24,
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
   },
   iconBox: {
-    width: 60,
-    height: 60,
-    backgroundColor: "#EBE3F9", 
+    width: 50,
+    height: 50,
+    backgroundColor: "#EBE3F9",
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
   },
   textContainer: {
-    marginLeft: 20,
+    marginLeft: 16,
     flex: 1,
     justifyContent: "center",
   },
   categoryName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
     color: "#1F2937",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   itemCount: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#6B7280",
   },
 
@@ -347,10 +367,9 @@ const styles = StyleSheet.create({
   menuOverlay: {
     flex: 1,
     backgroundColor: "#4C1D95",
-    paddingTop: 50,
     paddingHorizontal: 24,
     justifyContent: "space-between",
-    paddingBottom: 40,
+    paddingBottom: 20,
   },
   overlayHeader: {
     flexDirection: "row",
@@ -358,34 +377,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     height: 50,
   },
-  closeButton: {
-    padding: 4,
-  },
-  overlayLogo: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#fff",
-  },
-  overlayLinksContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 25,
-  },
-  overlayMenuText: {
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "600",
-  },
-  logoutButton: {
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  logoutText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "500",
-    opacity: 0.9,
-  },
+  closeButton: { padding: 4 },
+  overlayLogo: { fontSize: 20, fontWeight: "bold", color: "#fff" },
+  overlayLinksContainer: { alignItems: "center", justifyContent: "center", gap: 25 },
+  overlayMenuText: { color: "#fff", fontSize: 22, fontWeight: "600" },
+  logoutButton: { alignItems: "center", paddingVertical: 10 },
+  logoutText: { color: "#fff", fontSize: 16, fontWeight: "500", opacity: 0.9 },
 
   bottom: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "#fff", flexDirection: "row", justifyContent: "space-around", paddingVertical: 12, borderTopWidth: 1, borderColor: "#F3F4F6", height: 70 },
   menuItem: { alignItems: "center" },

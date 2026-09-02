@@ -1,13 +1,37 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link } from "expo-router"; // อิมพอร์ต Link สำหรับเปลี่ยนหน้า
-import { useState } from "react";
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Link, useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+interface Product {
+  id: number | string;
+  name?: string;
+  M_Name?: string;
+  title?: string;
+  stock?: number;
+  stock_quantity?: number;
+  M_Stock?: number;
+  price?: string;
+  badge_status?: string;
+}
 
 export default function Home() {
+  const router = useRouter();
   const [menuVisible, setMenuVisible] = useState(false);
+  const [userName, setUserName] = useState("Tisana");
 
-  // สเตตัสสำหรับชื่อผู้ใช้งานหลัก (แสดงบนหน้าจอ)
-  const [userName, setUserName] = useState("Tisana"); 
+  // State สำหรับดึงข้อมูลสินค้าจริงจาก Backend API
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const stats = [
     { value: "741", title: "NEW ITEMS" },
@@ -17,17 +41,57 @@ export default function Home() {
     { value: "4", title: "GROUPS" },
   ];
 
-  // ข้อมูลสินค้า (ปรับให้เป็นค่าคงที่ ไม่ต้องใช้ State เปลี่ยนแปลง)
-  const products = [
-    { id: 1, name: "HyperX SoloCast", stock: 15, price: "฿1,790", icon: "mic-outline" as const },
-    { id: 2, name: "Fantech Leviosa MCX01", stock: 24, price: "฿1,590", icon: "mic-outline" as const },
-    { id: 3, name: "Shure SM7B Cardioid", stock: 5, price: "฿22,864", icon: "mic-outline" as const },
+  const menuItems = [
+    { name: "Home", path: "/home" },
+    { name: "Products", path: "/product" },
+    { name: "Categories", path: "/categories" },
+    { name: "Add Microphone", path: "/add" },
+    { name: "Settings", path: "/settings" },
   ];
 
-  const menuItems = ["Home", "Products", "Categories", "Stores", "Finances", "Settings"];
+  // ฟังก์ชันดึงรายการสินค้าจาก Backend
+  const fetchProducts = async () => {
+    const BASE_URL = "http://119.59.102.161:3061";
+    try {
+      let res = await fetch(`${BASE_URL}/api/products`);
+      if (!res.ok) {
+        res = await fetch(`${BASE_URL}/products`);
+      }
+
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data.products || [];
+        setProducts(list.slice(0, 3));
+      } else {
+        throw new Error("Failed to load products");
+      }
+    } catch (err) {
+      console.error("Fetch Products Error:", err);
+      // Fallback ข้อมูลตัวอย่างหากเชื่อมต่อ Server ไม่ได้
+      setProducts([
+        { id: 1, name: "HyperX SoloCast", stock: 15, price: "฿1,790" },
+        { id: 2, name: "Fantech Leviosa MCX01", stock: 24, price: "฿1,590" },
+        { id: 3, name: "Shure SM7B Cardioid", stock: 5, price: "฿22,864" },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchProducts();
+    }, [])
+  );
+
+  const handleLogout = () => {
+    setMenuVisible(false);
+    // หากมี ล้าง Token/AsyncStorage สามารถใส่ตรงนี้ได้ครับ
+    router.replace("/");
+  };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* ==================== HEADER ==================== */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => setMenuVisible(true)}>
@@ -36,7 +100,6 @@ export default function Home() {
 
         <Text style={styles.logo}>Inventor.io</Text>
 
-        {/* ปุ่มรูปคนลิงก์ไปหน้า settings */}
         <Link href="/settings" asChild>
           <TouchableOpacity style={styles.profile}>
             <Ionicons name="person" size={20} color="#fff" />
@@ -46,7 +109,6 @@ export default function Home() {
 
       {/* ==================== MAIN CONTENT ==================== */}
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* ชื่อผู้ใช้งานปัจจุบัน */}
         <Text style={{ marginHorizontal: 24, fontSize: 14, color: "#6B7280" }}>
           Welcome back, <Text style={{ fontWeight: "bold", color: "#6C2BD9" }}>{userName}</Text>
         </Text>
@@ -63,7 +125,6 @@ export default function Home() {
             </View>
           ))}
 
-          {/* 🔥 แก้ไขจุดที่ 1: ใช้ Link ครอบปุ่ม View more เพื่อให้กดลิงก์ไปหน้า Categories ได้ */}
           <Link href="/categories" asChild>
             <TouchableOpacity style={styles.cardEmpty}>
               <View style={styles.viewMoreCircle}>
@@ -75,19 +136,34 @@ export default function Home() {
         </View>
 
         {/* Recent Products */}
-        <Text style={styles.section}>Recent Products</Text>
-        {products.map((product) => (
-          <View key={product.id} style={styles.productCard}>
-            <View style={styles.productIconBg}>
-              <Ionicons name={product.icon} size={26} color="#6C2BD9" />
-            </View>
-            <View style={styles.productDetails}>
-              <Text style={styles.productName} numberOfLines={1}>{product.name}</Text>
-              <Text style={styles.productStock}>Stock : {product.stock} pcs</Text>
-            </View>
-            <Text style={styles.productPrice}>{product.price}</Text>
-          </View>
-        ))}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.section}>Recent Products</Text>
+        </View>
+
+        {loading ? (
+          <ActivityIndicator color="#6C2BD9" style={{ marginVertical: 20 }} />
+        ) : (
+          products.map((product, index) => {
+            const name = product.name || product.M_Name || product.title || "Microphone";
+            const stock = product.stock ?? product.stock_quantity ?? product.M_Stock ?? 0;
+            const price = product.price ?? product.badge_status ?? "฿0";
+
+            return (
+              <View key={product.id || index} style={styles.productCard}>
+                <View style={styles.productIconBg}>
+                  <Ionicons name="mic-outline" size={26} color="#6C2BD9" />
+                </View>
+                <View style={styles.productDetails}>
+                  <Text style={styles.productName} numberOfLines={1}>
+                    {name}
+                  </Text>
+                  <Text style={styles.productStock}>Stock : {stock} pcs</Text>
+                </View>
+                <Text style={styles.productPrice}>{price}</Text>
+              </View>
+            );
+          })
+        )}
 
         {/* Sales */}
         <Text style={styles.section}>Sales</Text>
@@ -140,7 +216,6 @@ export default function Home() {
           </TouchableOpacity>
         </Link>
 
-        {/* 🔥 แก้ไขจุดที่ 2: เปลี่ยนลิงก์ปุ่มขวาสุดจาก Settings ให้เป็น Categories แทน */}
         <Link href="/categories" asChild>
           <TouchableOpacity style={styles.menuItem}>
             <Ionicons name="grid-outline" size={24} color="#C4B5FD" />
@@ -156,7 +231,7 @@ export default function Home() {
         visible={menuVisible}
         onRequestClose={() => setMenuVisible(false)}
       >
-        <View style={styles.menuOverlay}>
+        <SafeAreaView style={styles.menuOverlay}>
           <View style={styles.overlayHeader}>
             <TouchableOpacity onPress={() => setMenuVisible(false)} style={styles.closeButton}>
               <Ionicons name="close" size={28} color="#fff" />
@@ -167,18 +242,24 @@ export default function Home() {
 
           <View style={styles.overlayLinksContainer}>
             {menuItems.map((menu, idx) => (
-              <TouchableOpacity key={idx} onPress={() => setMenuVisible(false)}>
-                <Text style={styles.overlayMenuText}>{menu}</Text>
+              <TouchableOpacity
+                key={idx}
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push(menu.path as any);
+                }}
+              >
+                <Text style={styles.overlayMenuText}>{menu.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <TouchableOpacity style={styles.logoutButton} onPress={() => setMenuVisible(false)}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Text style={styles.logoutText}>Log out</Text>
           </TouchableOpacity>
-        </View>
+        </SafeAreaView>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -186,14 +267,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F9FAFB",
-    paddingTop: 50,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 24,
-    marginBottom: 20,
+    marginBottom: 10,
     height: 50,
   },
   logo: {
@@ -208,6 +288,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#6C2BD9",
     justifyContent: "center",
     alignItems: "center",
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingRight: 24,
   },
   section: {
     fontSize: 20,
@@ -238,11 +324,16 @@ const styles = StyleSheet.create({
   },
   cardEmpty: {
     width: "30%",
+    backgroundColor: "#fff",
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 15,
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
   },
   number: {
     color: "#6C2BD9",
@@ -374,10 +465,9 @@ const styles = StyleSheet.create({
   menuOverlay: {
     flex: 1,
     backgroundColor: "#4C1D95",
-    paddingTop: 50,
     paddingHorizontal: 24,
     justifyContent: "space-between",
-    paddingBottom: 40,
+    paddingBottom: 20,
   },
   overlayHeader: {
     flexDirection: "row",
